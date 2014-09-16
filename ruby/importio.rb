@@ -20,7 +20,7 @@ require "securerandom"
 class Query
   # This class represents a single query to the import.io platform
   
-  def initialize(callback, query)
+  def initialize(callback, query, payload)
     # Initialises the new query object with inputs and default state
     @query = query
     @jobs_spawned = 0
@@ -28,6 +28,7 @@ class Query
     @jobs_completed = 0
     @_finished = false
     @_callback = callback
+    @_payload = payload
   end
   
   def _on_message(data)
@@ -58,7 +59,7 @@ class Query
     end
     
     # Now we have processed the query state, we can return the data from the message back to listeners
-    @_callback.call(self, data)
+    @_callback.call(self, data, @_payload)
   end
     
   def finished
@@ -145,7 +146,7 @@ class Importio
     until q.empty?
       query_data = q.pop(true) rescue nil
       if query_data
-        query(query_data.query, query_data.callback)
+        query(query_data.query, query_data.callback, query_data.payload)
       end
     end
   end
@@ -175,16 +176,16 @@ class Importio
     end
   end
 
-  def query(query, callback)
+  def query(query, callback, payload=nil)
     # This method takes an import.io Query object and either queues it, or issues it to the server
     # depending on whether the session is connected
     
     if @session == nil || !@session.connected
-      @queue << {"query"=>query,"callback"=>callback}
+      @queue << {"query"=>query,"callback"=>callback, "payload"=>payload}
       return
     end
 
-    @session.query(query, callback)
+    @session.query(query, callback, payload)
   end
 
 end
@@ -504,7 +505,7 @@ class Session
     end
   end
     
-  def query(query, callback)
+  def query(query, callback, payload=nil)
     # This method takes an import.io Query object and issues it to the server, calling the callback
     # whenever a relevant message is received
     
@@ -512,7 +513,7 @@ class Session
     # This allows us to track which messages correspond to which query
     query["requestId"] = SecureRandom.uuid
     # Construct a new query state tracker and store it in our map of currently running queries
-    @queries[query["requestId"]] = Query::new(callback, query)
+    @queries[query["requestId"]] = Query::new(callback, query, payload)
     # Issue the query to the server
     request("/service/query", "", { "data"=>query })
   end

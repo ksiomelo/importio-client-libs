@@ -83,6 +83,7 @@ class Importio
     @login_host = nil
     @session = nil
     @queue = Queue.new
+    @lock = Mutex.new
   end
 
   # We use this only for a specific test case
@@ -111,81 +112,89 @@ class Importio
 
   def reconnect
     # Reconnects the client to the platform by establishing a new session
-    
-    # Disconnect an old session, if there is one
-    if @session != nil
-      disconnect()
-    end
+    @lock.synchronize {
+      # Disconnect an old session, if there is one
+      if @session != nil
+        disconnect()
+      end
 
-    if @username != nil
-      login(@username, @password, @login_host)
-    else
-      connect()
-    end
+      if @username != nil
+        login(@username, @password, @login_host)
+      else
+        connect()
+      end
+    }
   end
 
   def connect
     # Connect this client to the import.io server if not already connected
-
-    # Check if there is a session already first
-    if @session != nil
-      return
-    end
-
-    @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
-    @session.connect()
-
-    # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
-    # q = @queue.clone
-    q = Queue.new
-    until @queue.empty?
-      q.push(@queue.pop(true))
-    end
-    @queue = Queue.new
-
-    until q.empty?
-      query_data = q.pop(true) rescue nil
-      if query_data
-        query(query_data.query, query_data.callback, query_data.payload)
+    @lock.synchronize {
+      # Check if there is a session already first
+      if @session != nil
+        return
       end
-    end
+
+      @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
+      @session.connect()
+
+      # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
+      # q = @queue.clone
+      q = Queue.new
+      until @queue.empty?
+        q.push(@queue.pop(true))
+      end
+      @queue = Queue.new
+
+      until q.empty?
+        query_data = q.pop(true) rescue nil
+        if query_data
+          query(query_data.query, query_data.callback, query_data.payload)
+        end
+      end
+    }
   end
 
   def disconnect
     # Call this method to ask the client library to disconnect from the import.io server
     # It is best practice to disconnect when you are finished with querying, so as to clean
     # up resources on both the client and server
-
-    if @session != nil
-      @session.disconnect()
-      @session = nil
-    end
+    @lock.synchronize {
+      if @session != nil
+        @session.disconnect()
+        @session = nil
+      end
+    }
   end
 
   def stop
-    # This method stops all of the threads that are currently running in the session
-    if @session != nil
-      return @session.stop()
-    end
+    @lock.synchronize {
+      # This method stops all of the threads that are currently running in the session
+      if @session != nil
+        return @session.stop()
+      end
+    }
   end
   
   def join
-    # This method joins the threads that are running together in the session, so we can wait for them to be finished
-    if @session != nil
-      return @session.join()
-    end
+    @lock.synchronize {
+      # This method joins the threads that are running together in the session, so we can wait for them to be finished
+      if @session != nil
+        return @session.join()
+      end
+    }
   end
 
   def query(query, callback, payload=nil)
     # This method takes an import.io Query object and either queues it, or issues it to the server
     # depending on whether the session is connected
-    
-    if @session == nil || !@session.connected
-      @queue << {"query"=>query,"callback"=>callback, "payload"=>payload}
-      return
-    end
-
-    @session.query(query, callback, payload)
+    @lock.synchronize {
+      if @session == nil || !@session.connected
+        @queue << {"query"=>query,"callback"=>callback, "payload"=>payload}
+        return
+      else
+        @session.query(query, callback, payload)
+      end
+    }
   end
 
 end
@@ -320,7 +329,7 @@ class Session
         if !@disconnecting and @connected and !@connecting
           # If we get a 402 unknown client we need to reconnect
           if msg["error"] == "402::Unknown client"
-            puts "402 received, reconnecting"
+            puts "402 received, reconnecting\n"
             @io.reconnect()
           elsif throw
             raise error_message
@@ -440,7 +449,7 @@ class Session
         stop()
         return
       end
-      sleep 1
+      # sleep 1 # if uncommented may cause livelock
     end
   end
 

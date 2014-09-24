@@ -83,7 +83,6 @@ class Importio
     @login_host = nil
     @session = nil
     @queue = Queue.new
-    @lock = Mutex.new
   end
 
   # We use this only for a specific test case
@@ -112,89 +111,84 @@ class Importio
 
   def reconnect
     # Reconnects the client to the platform by establishing a new session
-    @lock.synchronize {
-      # Disconnect an old session, if there is one
-      if @session != nil
-        disconnect()
-      end
+    
+    # Disconnect an old session, if there is one
+    if @session != nil
+      disconnect()
+    end
 
-      if @username != nil
-        login(@username, @password, @login_host)
-      else
-        connect()
-      end
-    }
+    if @username != nil
+      login(@username, @password, @login_host)
+    else
+      connect()
+    end
+   
   end
 
   def connect
     # Connect this client to the import.io server if not already connected
-    @lock.synchronize {
+   
       # Check if there is a session already first
-      if @session != nil
-        return
-      end
+    if @session != nil
+      return
+    end
 
-      @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
-      @session.connect()
+    @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
+    @session.connect()
 
-      # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
-      # q = @queue.clone
-      q = Queue.new
-      until @queue.empty?
-        q.push(@queue.pop(true))
-      end
-      @queue = Queue.new
+    # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
+    # q = @queue.clone
+    q = Queue.new
+    until @queue.empty?
+      q.push(@queue.pop(true))
+    end
+    @queue = Queue.new
 
-      until q.empty?
-        query_data = q.pop(true) rescue nil
-        if query_data
-          query(query_data.query, query_data.callback, query_data.payload)
-        end
+    until q.empty?
+      query_data = q.pop(true) rescue nil
+      if query_data
+        query(query_data.query, query_data.callback, query_data.payload)
       end
-    }
+    end
+    
   end
 
   def disconnect
     # Call this method to ask the client library to disconnect from the import.io server
     # It is best practice to disconnect when you are finished with querying, so as to clean
     # up resources on both the client and server
-    @lock.synchronize {
-      if @session != nil
-        @session.disconnect()
-        @session = nil
-      end
-    }
+    
+    if @session != nil
+      @session.disconnect()
+      @session = nil
+    end
+    
   end
 
   def stop
-    @lock.synchronize {
       # This method stops all of the threads that are currently running in the session
       if @session != nil
         return @session.stop()
       end
-    }
   end
   
   def join
-    @lock.synchronize {
       # This method joins the threads that are running together in the session, so we can wait for them to be finished
       if @session != nil
         return @session.join()
       end
-    }
   end
 
   def query(query, callback, payload=nil)
     # This method takes an import.io Query object and either queues it, or issues it to the server
     # depending on whether the session is connected
-    @lock.synchronize {
       if @session == nil || !@session.connected
         @queue << {"query"=>query,"callback"=>callback, "payload"=>payload}
         return
       else
         @session.query(query, callback, payload)
       end
-    }
+    
   end
 
 end

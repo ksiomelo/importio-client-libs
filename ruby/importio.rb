@@ -322,10 +322,11 @@ class Session
         error_message = "Unsuccessful request: #{msg}"
         if !@disconnecting and @connected and !@connecting
           # If we get a 402 unknown client we need to reconnect
-          if msg["error"] == "402::Unknown client"
-            puts "402 received, reconnecting\n"
-            @io.reconnect()
-          elsif throw
+          # if msg["error"] == "402::Unknown client"
+          #             puts "402 received, reconnecting\n"
+          #             @io.reconnect()
+          #           els
+          if throw
             raise error_message
           else
             puts error_message

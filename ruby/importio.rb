@@ -83,6 +83,7 @@ class Importio
     @login_host = nil
     @session = nil
     @queue = Queue.new
+    @mutex = Mutex.new
   end
 
   # We use this only for a specific test case
@@ -111,7 +112,7 @@ class Importio
 
   def reconnect
     # Reconnects the client to the platform by establishing a new session
-    
+    puts "[Import.IO] #{Thread.current.object_id} reconnecting"
     # Disconnect an old session, if there is one
     if @session != nil
       disconnect()
@@ -127,29 +128,36 @@ class Importio
 
   def connect
     # Connect this client to the import.io server if not already connected
-   
+   @mutex.synchronize {
+      puts "[Import.IO] #{Thread.current.object_id} connecting"
+     
       # Check if there is a session already first
-    if @session != nil
-      return
-    end
-
-    @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
-    @session.connect()
-
-    # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
-    # q = @queue.clone
-    q = Queue.new
-    until @queue.empty?
-      q.push(@queue.pop(true))
-    end
-    @queue = Queue.new
-
-    until q.empty?
-      query_data = q.pop(true) rescue nil
-      if query_data
-        query(query_data.query, query_data.callback, query_data.payload)
+      if @session != nil
+        puts "[Import.IO] #{Thread.current.object_id} session already created, returning"
+        return
       end
-    end
+
+      puts "[Import.IO] #{Thread.current.object_id} creating session"
+      @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
+      @session.connect()
+
+      # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
+      # q = @queue.clone
+      q = Queue.new
+      until @queue.empty?
+        q.push(@queue.pop(true))
+      end
+      @queue = Queue.new
+      
+      puts "[Import.IO] #{Thread.current.object_id} Querying..."
+
+      until q.empty?
+        query_data = q.pop(true) rescue nil
+        if query_data
+          query(query_data.query, query_data.callback, query_data.payload)
+        end
+      end
+  }
     
   end
 
@@ -157,11 +165,16 @@ class Importio
     # Call this method to ask the client library to disconnect from the import.io server
     # It is best practice to disconnect when you are finished with querying, so as to clean
     # up resources on both the client and server
-    
-    if @session != nil
-      @session.disconnect()
-      @session = nil
-    end
+    @mutex.synchronize {
+      puts "[Import.IO] #{Thread.current.object_id} disconnecting"
+      if @session != nil
+        
+        @session.disconnect()
+        @session = nil
+      else
+        puts "[Import.IO] #{Thread.current.object_id} session exists, aborting"
+      end
+   }
     
   end
 
@@ -322,11 +335,11 @@ class Session
         error_message = "Unsuccessful request: #{msg}"
         if !@disconnecting and @connected and !@connecting
           # If we get a 402 unknown client we need to reconnect
-          # if msg["error"] == "402::Unknown client"
-          #             puts "402 received, reconnecting\n"
-          #             @io.reconnect()
-          #           els
-          if throw
+          if msg["error"] == "402::Unknown client"
+            puts "[Import.IO] #{Thread.current.object_id} 402 received, reconnecting\n"
+            @io.reconnect()
+          elsif throw
+          # if throw
             raise error_message
           else
             puts error_message

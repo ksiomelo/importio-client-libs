@@ -83,7 +83,6 @@ class Importio
     @login_host = nil
     @session = nil
     @queue = Queue.new
-    @mutex = Mutex.new
   end
 
   # We use this only for a specific test case
@@ -128,36 +127,30 @@ class Importio
 
   def connect
     # Connect this client to the import.io server if not already connected
-   @mutex.synchronize {
-      puts "[Import.IO] #{Thread.current.object_id} connecting"
      
-      # Check if there is a session already first
-      if @session != nil
-        puts "[Import.IO] #{Thread.current.object_id} session already created, returning"
-        return
-      end
+    # Check if there is a session already first
+    if @session != nil
+      return
+    end
 
-      puts "[Import.IO] #{Thread.current.object_id} creating session"
-      @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
-      @session.connect()
+    puts "[Import.IO] #{Thread.current.object_id} creating session"
+    @session = Session::new(self, @host, @user_id, @api_key, @proxy_host, @proxy_port)
+    @session.connect()
 
-      # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
-      # q = @queue.clone
-      q = Queue.new
-      until @queue.empty?
-        q.push(@queue.pop(true))
-      end
-      @queue = Queue.new
-      
-      puts "[Import.IO] #{Thread.current.object_id} Querying..."
+    # This should be a @queue.clone, but this errors in 2.1 branch of Ruby: #9718
+    # q = @queue.clone
+    q = Queue.new
+    until @queue.empty?
+      q.push(@queue.pop(true))
+    end
+    @queue = Queue.new
 
-      until q.empty?
-        query_data = q.pop(true) rescue nil
-        if query_data
-          query(query_data.query, query_data.callback, query_data.payload)
-        end
+    until q.empty?
+      query_data = q.pop(true) rescue nil
+      if query_data
+        query(query_data.query, query_data.callback, query_data.payload)
       end
-  }
+    end
     
   end
 
@@ -165,16 +158,16 @@ class Importio
     # Call this method to ask the client library to disconnect from the import.io server
     # It is best practice to disconnect when you are finished with querying, so as to clean
     # up resources on both the client and server
-    @mutex.synchronize {
-      puts "[Import.IO] #{Thread.current.object_id} disconnecting"
-      if @session != nil
-        
-        @session.disconnect()
-        @session = nil
-      else
-        puts "[Import.IO] #{Thread.current.object_id} session exists, aborting"
-      end
-   }
+
+    puts "[Import.IO] #{Thread.current.object_id} disconnecting"
+    if @session != nil
+      
+      @session.disconnect()
+      @session = nil
+    else
+      puts "[Import.IO] #{Thread.current.object_id} session exists, aborting"
+    end
+
     
   end
 

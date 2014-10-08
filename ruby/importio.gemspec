@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = "importio"
-  s.version     = "2.0.5"
+  s.version     = "2.0.7"
   s.date        = "2014-06-18"
   s.summary     = "Ruby client library for import.io"
   s.description = "Connect to the import.io APIs using your Ruby application"
